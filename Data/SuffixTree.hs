@@ -34,6 +34,8 @@
 -- /n/ is the length of a query string; and /t/ is the number of
 -- elements (nodes and leaves) in a suffix tree.
 
+{-# LANGUAGE ScopedTypeVariables #-}
+
 module Data.SuffixTree
     (
     -- * Types
@@ -89,6 +91,8 @@ type Alphabet a = [a]
 -- create a value of this type, and 'prefix' to deconstruct one.
 newtype Prefix a = Prefix ([a], Length a)
 
+type Suffix a = [a]
+
 instance (Eq a) => Eq (Prefix a) where
     a == b = prefix a == prefix b
 
@@ -98,7 +102,7 @@ instance (Ord a) => Ord (Prefix a) where
 instance (Show a) => Show (Prefix a) where
     show a = "mkPrefix " ++ show (prefix a)
 
-type EdgeFunction a = [[a]] -> (Length a, [[a]])
+type EdgeFunction a = [Suffix a] -> (Length a, [Suffix a])
 
 -- | An edge in the suffix tree.
 type Edge a = (Prefix a, STree a)
@@ -191,34 +195,40 @@ inc :: Length a -> Length a
 inc (Exactly n) = Exactly (n+1)
 inc (Sum n xs)  = Sum (n+1) xs
 
-lazyTreeWith :: (Eq a) => EdgeFunction a -> Alphabet a -> [a] -> STree a
+lazyTreeWith :: forall a. (Eq a) => EdgeFunction a -> Alphabet a -> [a] 
+             -> STree a
 lazyTreeWith edge alphabet = suf . suffixes
-    where suf [[]] = Leaf
+    where suf :: (Eq a) => [Suffix a] -> STree a
+          suf [[]] = Leaf
           suf ss = Node [(Prefix (a:sa, inc cpl), suf ssr)
                          | a <- alphabet,
                            n@(sa:_) <- [ss `clusterBy` a],
                            (cpl,ssr) <- [edge n]]
+          clusterBy :: (Eq a) => [Suffix a] -> a -> [Suffix a]
           clusterBy ss a = [cs | c:cs <- ss, c == a]
 
 -- | /O(n)/. Returns all non-empty suffixes of the argument, longest
 -- first.  Behaves as follows:
 --
 -- >suffixes xs == init (tails xs)
-suffixes :: [a] -> [[a]]
+suffixes :: [a] -> [Suffix a]
 suffixes xs@(_:xs') = xs : suffixes xs'
 suffixes _ = []
 
-lazyTree :: (Ord a) => EdgeFunction a -> [a] -> STree a
+lazyTree :: forall a. (Ord a) => EdgeFunction a -> [a] -> STree a
 lazyTree edge = suf . suffixes
-    where suf [[]] = Leaf
+    where suf :: (Ord a) => [Suffix a] -> STree a
+          suf [[]] = Leaf
           suf ss = Node [(Prefix (a:sa, inc cpl), suf ssr)
                          | (a, n@(sa:_)) <- suffixMap ss,
                            (cpl,ssr) <- [edge n]]
 
-suffixMap :: Ord a => [[a]] -> [(a, [[a]])]
+suffixMap :: forall a. (Ord a) => [Suffix a] -> [(a, [Suffix a])]
 suffixMap = map (second reverse) . M.toList . L.foldl' step M.empty
-    where step m (x:xs) = M.alter (f xs) x m
+    where step :: Ord a => M.Map a [Suffix a] -> Suffix a -> M.Map a [Suffix a]
+          step m (x:xs) = M.alter (f xs) x m
           step m _ = m
+          f :: Suffix a -> Maybe [Suffix a] -> Maybe [Suffix a]
           f x Nothing = Just [x]
           f x (Just xs) = Just (x:xs)
 
