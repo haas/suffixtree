@@ -91,7 +91,7 @@ type Alphabet a = [a]
 -- create a value of this type, and 'prefix' to deconstruct one.
 newtype Prefix a = Prefix ([a], Length a)
 
-type Suffix a = [a]
+data Suffix a = Suffix [a] Int
 
 instance (Eq a) => Eq (Prefix a) where
     a == b = prefix a == prefix b
@@ -199,10 +199,10 @@ lazyTreeWith :: forall a. (Eq a) => EdgeFunction a -> Alphabet a -> [a]
              -> STree a
 lazyTreeWith edge alphabet = suf . suffixes
     where suf :: (Eq a) => [Suffix a] -> STree a
-          suf [[]] = Leaf
+          suf [] = Leaf
           suf ss = Node [(Prefix (a:sa, inc cpl), suf ssr)
                          | a <- alphabet,
-                           n@(sa:_) <- [ss `clusterBy` a],
+                           n@(Suffix sa _:_) <- [ss `clusterBy` a],
                            (cpl,ssr) <- [edge n]]
           clusterBy :: (Eq a) => [Suffix a] -> a -> [Suffix a]
           clusterBy ss a = [cs | c:cs <- ss, c == a]
@@ -212,13 +212,15 @@ lazyTreeWith edge alphabet = suf . suffixes
 --
 -- >suffixes xs == init (tails xs)
 suffixes :: [a] -> [Suffix a]
-suffixes xs@(_:xs') = xs : suffixes xs'
-suffixes _ = []
+suffixes = suffixes' 0 
+  where suffixes' :: Int -> [a] -> [Suffix a]
+        suffixes' i xs@(_:xs') = Suffix xs i : suffixes (i+1) xs'
+        suffixes' _ _ = []
 
 lazyTree :: forall a. (Ord a) => EdgeFunction a -> [a] -> STree a
 lazyTree edge = suf . suffixes
     where suf :: (Ord a) => [Suffix a] -> STree a
-          suf [[]] = Leaf
+          suf [] = Leaf
           suf ss = Node [(Prefix (a:sa, inc cpl), suf ssr)
                          | (a, n@(sa:_)) <- suffixMap ss,
                            (cpl,ssr) <- [edge n]]
@@ -232,14 +234,14 @@ suffixMap = map (second reverse) . M.toList . L.foldl' step M.empty
           f x Nothing = Just [x]
           f x (Just xs) = Just (x:xs)
 
-cst :: Eq a => EdgeFunction a
-cst [s] = (Sum 0 s, [[]])
-cst awss@((a:w):ss)
-    | null [c | c:_ <- ss, a /= c] = let cpl' = inc cpl
-                                     in seq cpl' (cpl', rss)
+cst :: Eq a => EdgeFunction a -- == [Suffix a] -> (Length a, [Suffix a])
+cst [Suffix s _i] = (Sum 0 s, [])
+cst awss@(Suffix (a:w) i:ss)
+    | null [c | Suffix (c:_) _ <- ss, a /= c] = let cpl' = inc cpl
+                                                in seq cpl' (cpl', rss)
     | otherwise = (Exactly 0, awss)
-    where (cpl, rss) = cst (w:[u | _:u <- ss])
-
+    where (cpl, rss) = cst (Suffix w i:[Suffix u j | Suffix (_:u) j <- ss])
+{-
 pst :: Eq a => EdgeFunction a
 pst = g . dropNested
     where g [s] = (Sum 0 s, [[]])
@@ -249,7 +251,7 @@ pst = g . dropNested
               | null [c | c:_ <- ss, a /= c] = [a:s | s <- rss]
               | otherwise = awss
               where rss = dropNested (w:[u | _:u <- ss])
-
+-}
 {-# SPECIALISE constructWith :: [Char] -> [Char] -> STree Char #-}
 {-# SPECIALISE constructWith :: [[Char]] -> [[Char]] -> STree [Char] #-}
 {-# SPECIALISE constructWith :: [SB.ByteString] -> [SB.ByteString]
