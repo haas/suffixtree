@@ -73,6 +73,48 @@ import qualified Data.ByteString.Lazy as LB
 import qualified Data.List as L
 import Data.Maybe (listToMaybe, mapMaybe)
 
+data IxData a = IxData {dat :: a, ix :: Int}
+              | Empty
+-- newtype IxData a = IxData (Int, a)
+-- type IxData a = (Int, a)
+
+instance Eq a => Eq (IxData a) where
+  (IxData a _ixa) == (IxData b _ixb) = a ==  b
+  Empty           == Empty           = True
+  _               == _               = False
+
+instance Ord a => Ord (IxData a) where
+  (IxData a _ixa) <= (IxData b _ixb) = a ==  b
+  Empty           <= Empty           = True
+  _               <= _               = False
+  
+instance (Show a) => Show (IxData a) where
+  show (IxData a i) = show a ++ show i
+  
+fromList :: [a] -> [IxData a]
+fromList a = zipWith IxData a [0..]
+  
+-- N.B. rather expensive function (based on (!!))  
+leftChar :: [IxData a] -> Prefix (IxData a) -> IxData a
+leftChar l (Prefix (IxData _ i:xs,_)) 
+  | i == 0    = Empty
+  | otherwise = l !! (i-1)
+  
+isLeftDiverse :: Eq a => [IxData a] -> STree (IxData a) -> Bool
+isLeftDiverse _ Leaf          = False
+isLeftDiverse _ (Node [edge]) = False
+isLeftDiverse l (Node edges ) = allTheSame $ map (leftChar l . fst) edges
+
+allTheSame :: Eq a => [a] -> Bool
+allTheSame [ ] = False
+allTheSame [x] = False
+allTheSame (x:y:[])
+  | x == y     = True
+  | otherwise  = False
+allTheSame (x:y:xs)
+  | x == y     = allTheSame (y:xs)
+  | otherwise  = False
+  
 -- | The length of a prefix list.  This type is formulated to do cheap
 -- work eagerly (to avoid constructing a pile of deferred thunks),
 -- while deferring potentially expensive work (computing the length of
