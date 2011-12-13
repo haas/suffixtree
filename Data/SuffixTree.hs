@@ -205,7 +205,7 @@ lazyTreeWith edge alphabet = suf . suffixes
                            n@(Suffix sa _:_) <- [ss `clusterBy` a],
                            (cpl,ssr) <- [edge n]]
           clusterBy :: (Eq a) => [Suffix a] -> a -> [Suffix a]
-          clusterBy ss a = [cs | c:cs <- ss, c == a]
+          clusterBy ss a = [Suffix cs i | Suffix (c:cs) i <- ss, c == a]
 
 -- | /O(n)/. Returns all non-empty suffixes of the argument, longest
 -- first.  Behaves as follows:
@@ -214,7 +214,7 @@ lazyTreeWith edge alphabet = suf . suffixes
 suffixes :: [a] -> [Suffix a]
 suffixes = suffixes' 0 
   where suffixes' :: Int -> [a] -> [Suffix a]
-        suffixes' i xs@(_:xs') = Suffix xs i : suffixes (i+1) xs'
+        suffixes' i xs@(_:xs') = Suffix xs i : suffixes' (i+1) xs'
         suffixes' _ _ = []
 
 lazyTree :: forall a. (Ord a) => EdgeFunction a -> [a] -> STree a
@@ -222,13 +222,14 @@ lazyTree edge = suf . suffixes
     where suf :: (Ord a) => [Suffix a] -> STree a
           suf [] = Leaf
           suf ss = Node [(Prefix (a:sa, inc cpl), suf ssr)
-                         | (a, n@(sa:_)) <- suffixMap ss,
+                         | (a, n@(Suffix sa _:_)) <- suffixMap ss,
                            (cpl,ssr) <- [edge n]]
 
+-- suffixMap ["abc", "cdf", "adb"] => [('a',["bc","db"]),('c',["df"])]                           
 suffixMap :: forall a. (Ord a) => [Suffix a] -> [(a, [Suffix a])]
 suffixMap = map (second reverse) . M.toList . L.foldl' step M.empty
     where step :: Ord a => M.Map a [Suffix a] -> Suffix a -> M.Map a [Suffix a]
-          step m (x:xs) = M.alter (f xs) x m
+          step m (Suffix (x:xs) i) = M.alter (f (Suffix xs i)) x m
           step m _ = m
           f :: Suffix a -> Maybe [Suffix a] -> Maybe [Suffix a]
           f x Nothing = Just [x]
